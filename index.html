@@ -25,6 +25,7 @@
             padding: 3px 10px; border-radius: 3px; font-size: 11px; cursor: pointer; }
     </style>
     <script>
+    // Ruffle config - must be set BEFORE loading ruffle.js
     window.RufflePlayer = window.RufflePlayer || {};
     window.RufflePlayer.config = {
         allowScriptAccess: true,
@@ -45,7 +46,7 @@
         <div id="loading">
             <div class="spinner"></div>
             <div id="load-msg">初始化播放器...</div>
-            <div id="tip">首次加载需要下载约10MB资源，请耐心等待</div>
+            <div id="tip">首次加载需下载约10MB资源</div>
         </div>
     </div>
     <div id="controls">
@@ -53,25 +54,45 @@
         <button onclick="location.reload()">刷新</button>
     </div>
     <script>
-    // 4399 JS Bridge Mock
-    window._4399_function_store_id = function(d) { console.log('[4399] store:', d); return true; };
-    window._4399_function_payMoney_id = function(d) { console.log('[4399] pay:', d); return true; };
-    window._4399_function_shop_id = function(d) { console.log('[4399] shop:', d); return true; };
-    window._4399_function_rankList_id = function(d) { console.log('[4399] rank:', d); return true; };
+    // ========== 4399 JS Bridge 完整Mock ==========
+    // 这些函数通过ExternalInterface.call被游戏SWF调用
+    // 必须在Ruffle初始化之前定义好
+    
+    window._4399_function_store_id = function(data) {
+        console.log('[4399] store:', data);
+        return true;
+    };
+    window._4399_function_payMoney_id = function(data) {
+        console.log('[4399] pay:', data);
+        return true;
+    };
+    window._4399_function_shop_id = function(data) {
+        console.log('[4399] shop:', data);
+        return true;
+    };
+    window._4399_function_rankList_id = function(data) {
+        console.log('[4399] rank:', data);
+        return true;
+    };
     window._4399_getUserInfo = function() {
         var info = JSON.stringify({uid:'12345678',username:'Player',isLogin:true,vip:0});
         console.log('[4399] getUserInfo:', info);
         return info;
     };
+    
+    // Ctrl_mo callback functions
+    window.ctrl_loadOK = function() {
+        console.log('[4399] ctrl loadOK');
+    };
 
-    // Register SW
+    // Register Service Worker to intercept 4399 API calls
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw-intercept.js').then(function() {
             console.log('[SW] Registered');
         }).catch(function(e) { console.log('[SW] Error:', e); });
     }
 
-    // Initialize game
+    // ========== 初始化游戏 ==========
     (function() {
         var loadMsg = document.getElementById('load-msg');
         var loading = document.getElementById('loading');
@@ -81,7 +102,7 @@
             try {
                 loadMsg.textContent = '创建Ruffle播放器...';
                 var R = window.RufflePlayer.newest();
-                if (!R) { loadMsg.textContent = '播放器加载失败，请刷新'; return; }
+                if (!R) { loadMsg.textContent = '播放器加载失败'; return; }
 
                 var player = R.createPlayer();
                 player.style.width = '100%';
@@ -90,8 +111,8 @@
 
                 loadMsg.textContent = '加载造梦江湖...';
 
-                // 加载壳SWF（壳负责加载ctrl_mo和game_core）
-                // game_core.swf已patch isLocal=true，跳过4399登录
+                // 加载壳SWF → 壳加载ctrl_mo + game_core
+                // game_core已patch: isLocal=true, serviceHold=false
                 player.load({
                     url: 'xbcqv147.swf',
                     allowScriptAccess: true
@@ -100,18 +121,17 @@
                     setTimeout(function() {
                         loading.style.opacity = '0';
                         setTimeout(function() { loading.style.display = 'none'; }, 1000);
-                    }, 3000);
+                    }, 2000);
                 }).catch(function(err) {
                     loadMsg.textContent = '加载失败: ' + err.message;
                     console.error('[Game] Load error:', err);
                 });
             } catch(e) {
                 loadMsg.textContent = '错误: ' + e.message;
-                console.error('[Game] Init error:', e);
+                console.error('[Game] Error:', e);
             }
         }
 
-        // Run init when DOM is ready
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
