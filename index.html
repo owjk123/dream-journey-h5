@@ -6,41 +6,35 @@
     <title>造梦江湖 - Ruffle版</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0a0a0a; color: #ccc; font-family: sans-serif; }
-        #game-area {
-            width: 100vw; height: 100vh; position: relative;
-            display: flex; align-items: center; justify-content: center;
-        }
+        body { background: #000; overflow: hidden; }
+        #game-area { width: 100vw; height: 100vh; }
         #game-area ruffle-player { width: 100%; height: 100%; }
-        #loading-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: #0a0a0a; display: flex; flex-direction: column;
+        #loading {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: flex; flex-direction: column;
             align-items: center; justify-content: center; z-index: 100;
-            color: #ffd700;
+            color: #ffd700; font-family: sans-serif;
         }
         .spinner { width: 40px; height: 40px; border: 3px solid #333;
             border-top-color: #ffd700; border-radius: 50%;
-            animation: spin 1s linear infinite; margin-bottom: 15px; }
+            animation: spin 1s linear infinite; margin-bottom: 12px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        #error-log { color: #ff6b6b; font-size: 12px; max-width: 80vw;
-            margin-top: 10px; word-break: break-all; display: none; }
+        #load-msg { font-size: 14px; }
         #controls {
-            position: fixed; bottom: 8px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 8px; z-index: 200;
+            position: fixed; bottom: 8px; right: 8px;
+            display: flex; gap: 6px; z-index: 200;
         }
         #controls button {
-            background: rgba(30,15,10,0.9); color: #d4a574; border: 1px solid #8b4513;
-            padding: 4px 12px; border-radius: 3px; font-size: 12px; cursor: pointer;
+            background: rgba(30,15,10,0.8); color: #d4a574; border: 1px solid #8b4513;
+            padding: 3px 10px; border-radius: 3px; font-size: 11px; cursor: pointer;
         }
-        #controls button:hover { color: #ffd700; }
     </style>
 </head>
 <body>
     <div id="game-area">
-        <div id="loading-overlay">
+        <div id="loading">
             <div class="spinner"></div>
-            <div id="loading-text">正在初始化 Ruffle...</div>
-            <div id="error-log"></div>
+            <div id="load-msg">初始化中...</div>
         </div>
     </div>
     <div id="controls">
@@ -49,90 +43,68 @@
     </div>
 
     <script>
-        // Ruffle配置 - 必须在加载ruffle.js之前设置
+        // 注册Service Worker拦截4399 API请求
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw-intercept.js').then(reg => {
+                console.log('[Main] SW registered');
+            }).catch(err => {
+                console.log('[Main] SW failed:', err);
+            });
+        }
+
+        // Ruffle配置
         window.RufflePlayer = window.RufflePlayer || {};
         window.RufflePlayer.config = {
-            allowScriptAccess: false,
+            allowScriptAccess: true,
             scale: "showAll",
             backgroundColor: "#000000",
             letterbox: "on",
             autoplay: "on",
             unmuteOverlay: "hidden",
-            logLevel: "info",
-            maxExecutionDuration: 30,
+            logLevel: "warn",
+            maxExecutionDuration: 60,
+            baseUrl: window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1),
         };
-
-        const loadingText = document.getElementById('loading-text');
-        const errorLog = document.getElementById('error-log');
-        const loadingOverlay = document.getElementById('loading-overlay');
+    </script>
+    <script src="ruffle/ruffle.js"></script>
+    <script>
+        const loadMsg = document.getElementById('load-msg');
+        const loading = document.getElementById('loading');
         const gameArea = document.getElementById('game-area');
 
-        function log(msg) {
-            loadingText.textContent = msg;
-            console.log('[Ruffle]', msg);
-        }
-
-        function showError(msg) {
-            errorLog.style.display = 'block';
-            errorLog.textContent += msg + '\n';
-        }
-
-        log('加载 Ruffle 引擎...');
-    </script>
-
-    <!-- 加载Ruffle -->
-    <script src="ruffle/ruffle.js"></script>
-
-    <script>
         window.addEventListener("DOMContentLoaded", function() {
+            loadMsg.textContent = '创建播放器...';
+
             try {
-                log('创建播放器...');
-
-                // 检查Ruffle是否可用
-                if (!window.RufflePlayer || !window.RufflePlayer.newest) {
-                    showError('Ruffle引擎加载失败，请刷新重试');
-                    return;
-                }
-
                 const Ruffle = window.RufflePlayer.newest();
                 const player = Ruffle.createPlayer();
                 player.style.width = '100%';
                 player.style.height = '100%';
                 gameArea.appendChild(player);
 
-                log('加载游戏SWF...');
+                loadMsg.textContent = '加载游戏...';
 
-                // 加载游戏主体SWF
-                const swfUrl = new URL('game_core.swf', window.location.href).href;
-                player.load({ url: swfUrl, allowScriptAccess: false }).then(() => {
-                    log('游戏加载成功！');
-                    setTimeout(() => { loadingOverlay.style.display = 'none'; }, 2000);
+                player.load({ url: 'game_core.swf', allowScriptAccess: true }).then(() => {
+                    loadMsg.textContent = '游戏已加载！';
+                    setTimeout(() => { loading.style.display = 'none'; }, 3000);
                 }).catch(err => {
-                    showError('SWF加载失败: ' + err.message);
-                    log('尝试备用方案...');
-
-                    // 备用：加载4399壳SWF
-                    const shellUrl = new URL('xbcqv147.swf', window.location.href).href;
-                    player.load({ url: shellUrl, allowScriptAccess: false }).then(() => {
-                        log('壳SWF加载成功');
-                        setTimeout(() => { loadingOverlay.style.display = 'none'; }, 2000);
+                    loadMsg.textContent = '加载失败，尝试备用SWF...';
+                    player.load({ url: 'xbcqv147.swf', allowScriptAccess: true }).then(() => {
+                        loadMsg.textContent = '备用SWF已加载';
+                        setTimeout(() => { loading.style.display = 'none'; }, 3000);
                     }).catch(err2 => {
-                        showError('备用方案也失败: ' + err2.message);
+                        loadMsg.textContent = '加载失败: ' + err2.message;
                     });
                 });
-
             } catch(e) {
-                showError('初始化错误: ' + e.message + '\n' + e.stack);
+                loadMsg.textContent = '错误: ' + e.message;
             }
         });
 
         function fullscreen() {
             const player = document.querySelector('ruffle-player');
-            if (document.fullscreenElement) {
-                document.exitFullscreen();
-            } else {
-                (player || gameArea).requestFullscreen();
-            }
+            if (document.fullscreenElement) document.exitFullscreen();
+            else (player || gameArea).requestFullscreen();
         }
     </script>
 </body>
