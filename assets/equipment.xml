@@ -1,1 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?><data></data>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 装备数据配置 -->
+<!-- 状态: 需要从dbV147.swf中提取的RECORDS数据 -->
+<equipment>
+<!-- RECORDS格式，包含装备名称、属性等 -->
+</equipment>
