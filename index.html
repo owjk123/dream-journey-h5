@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>造梦江湖 - Flash模拟器版</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a0a0a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Microsoft YaHei', sans-serif;
+            color: #d4a574;
+            overflow: hidden;
+        }
+        .header {
+            text-align: center;
+            padding: 10px;
+            width: 100%;
+            background: linear-gradient(180deg, #2a1510 0%, transparent 100%);
+        }
+        .header h1 {
+            font-size: 1.2em;
+            color: #ffd700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+        .header p {
+            font-size: 0.7em;
+            color: #8b7355;
+            margin-top: 3px;
+        }
+        #game-container {
+            width: 800px;
+            height: 600px;
+            max-width: 100vw;
+            max-height: calc(100vh - 60px);
+            background: #000;
+            border: 2px solid #8b4513;
+            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(139, 69, 19, 0.3);
+            position: relative;
+        }
+        #game-container ruffle-object {
+            width: 100%;
+            height: 100%;
+        }
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #ffd700;
+        }
+        .loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #8b4513;
+            border-top-color: #ffd700;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error-msg {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #ff6b6b;
+            padding: 20px;
+            display: none;
+        }
+        .controls {
+            margin-top: 8px;
+            display: flex;
+            gap: 10px;
+        }
+        .controls button {
+            background: #2a1510;
+            color: #d4a574;
+            border: 1px solid #8b4513;
+            padding: 5px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+        .controls button:hover { background: #3a2520; color: #ffd700; }
+        .note {
+            margin-top: 8px;
+            font-size: 0.65em;
+            color: #665544;
+            text-align: center;
+            max-width: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚔ 造梦江湖 ⚔</h1>
+        <p>Ruffle Flash模拟器 · 原版Flash游戏在线运行</p>
+    </div>
+    <div id="game-container">
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>正在加载游戏...</div>
+        </div>
+        <div class="error-msg" id="error-msg"></div>
+    </div>
+    <div class="controls">
+        <button onclick="toggleFullscreen()">全屏</button>
+        <button onclick="restartGame()">重新加载</button>
+    </div>
+    <div class="note">
+        ⚠ 原版游戏为4399在线游戏，部分功能（存档、充值、排行榜等）需要服务器支持，本地运行可能无法使用。
+        如遇问题请尝试刷新页面。
+    </div>
+
+    <script src="ruffle/ruffle.js"></script>
+    <script>
+        const container = document.getElementById('game-container');
+        const loadingEl = document.getElementById('loading');
+        const errorEl = document.getElementById('error-msg');
+
+        window.RufflePlayer = window.RufflePlayer || {};
+        window.RufflePlayer.config = {
+            // Allow the game to access local assets
+            allowScriptAccess: false,
+            // Scale mode
+            scale: "showAll",
+            // Background color
+            backgroundColor: "#000000",
+            // Letterbox
+            letterbox: "on",
+            // Auto play
+            autoplay: "on",
+            // Unmute overlay
+            unmuteOverlay: "hidden",
+            // Log level
+            logLevel: "warn",
+            // Max execution duration
+            maxExecutionDuration: 15,
+            // Base URL for relative paths - important for asset loading
+            baseUrl: window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1),
+        };
+
+        async function loadGame() {
+            try {
+                const ruffle = window.RufflePlayer.newest();
+                const player = ruffle.createPlayer();
+                player.style.width = '100%';
+                player.style.height = '100%';
+                container.appendChild(player);
+                
+                await player.load({
+                    url: 'game_core.swf',
+                    allowScriptAccess: false,
+                });
+                
+                loadingEl.style.display = 'none';
+            } catch (e) {
+                console.error('Ruffle load error:', e);
+                loadingEl.style.display = 'none';
+                errorEl.style.display = 'block';
+                errorEl.textContent = '加载失败: ' + e.message;
+            }
+        }
+
+        function toggleFullscreen() {
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            } else {
+                container.requestFullscreen();
+            }
+        }
+
+        function restartGame() {
+            location.reload();
+        }
+
+        // Start loading
+        loadGame();
+    </script>
+</body>
+</html>
