@@ -43,16 +43,10 @@
     </div>
 
     <script>
-        // 注册Service Worker拦截4399 API请求
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw-intercept.js').then(reg => {
-                console.log('[Main] SW registered');
-            }).catch(err => {
-                console.log('[Main] SW failed:', err);
-            });
+            navigator.serviceWorker.register('sw-intercept.js').catch(e => console.log('SW error:', e));
         }
 
-        // Ruffle配置
         window.RufflePlayer = window.RufflePlayer || {};
         window.RufflePlayer.config = {
             allowScriptAccess: true,
@@ -73,8 +67,6 @@
         const gameArea = document.getElementById('game-area');
 
         window.addEventListener("DOMContentLoaded", function() {
-            loadMsg.textContent = '创建播放器...';
-
             try {
                 const Ruffle = window.RufflePlayer.newest();
                 const player = Ruffle.createPlayer();
@@ -82,15 +74,13 @@
                 player.style.height = '100%';
                 gameArea.appendChild(player);
 
-                loadMsg.textContent = '加载游戏...';
-
-                player.load({ url: 'game_core.swf', allowScriptAccess: true }).then(() => {
+                // 加载4399壳SWF（完整版，包含4399控件和游戏主体）
+                player.load({ url: 'xbcqv147.swf', allowScriptAccess: true }).then(() => {
                     loadMsg.textContent = '游戏已加载！';
                     setTimeout(() => { loading.style.display = 'none'; }, 3000);
                 }).catch(err => {
-                    loadMsg.textContent = '加载失败，尝试备用SWF...';
-                    player.load({ url: 'xbcqv147.swf', allowScriptAccess: true }).then(() => {
-                        loadMsg.textContent = '备用SWF已加载';
+                    loadMsg.textContent = '主SWF失败，尝试游戏主体...';
+                    player.load({ url: 'game_core.swf', allowScriptAccess: true }).then(() => {
                         setTimeout(() => { loading.style.display = 'none'; }, 3000);
                     }).catch(err2 => {
                         loadMsg.textContent = '加载失败: ' + err2.message;
