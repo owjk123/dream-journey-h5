@@ -1,9 +1,4 @@
 // Service Worker to intercept 4399 API calls and return mock data
-const MOCK_RESPONSES = {
-    'get_time': Math.floor(Date.now() / 1000).toString(),
-    'flash_ctrl_version': '<?xml version="1.0" encoding="utf-8"?><data></data>',
-};
-
 self.addEventListener('install', event => {
     self.skipWaiting();
 });
@@ -23,14 +18,13 @@ self.addEventListener('fetch', event => {
         let contentType = 'text/plain';
         
         if (url.includes('get_time')) {
-            // 返回时间戳
-            responseText = Math.floor(Date.now() / 1000).toString();
-            contentType = 'text/plain';
+            // 返回JSON格式的时间戳（游戏期望有time属性的对象）
+            responseText = JSON.stringify({ time: Math.floor(Date.now() / 1000) });
+            contentType = 'application/json';
         } else if (url.includes('flash_ctrl_version')) {
             responseText = '<?xml version="1.0" encoding="utf-8"?><data></data>';
             contentType = 'application/xml';
         } else {
-            // 其他4399请求返回空JSON
             responseText = '{}';
             contentType = 'application/json';
         }
