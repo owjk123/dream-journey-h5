@@ -1,0 +1,15 @@
+{
+  "name": "dream-journey-h5",
+  "version": "1.0.0",
+  "description": "造梦江湖1 H5复刻版",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tgz
+game-data.js
+game-code.js
+game-code-clean.js
+datamanager-inline.js
+public/data/
+test-screenshot.png
