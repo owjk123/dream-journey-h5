@@ -1,1 +1,7 @@
-<?xml version="1.0" encoding="utf-8"?><data></data>
+<?xml version="1.0" encoding="utf-8"?>
+<skill>
+                <skill1></skill1>
+                <skill2></skill2>
+                <skill3></skill3>
+                <learnedSkill></learnedSkill>
+            </skill>
