@@ -1,4 +1,4 @@
-// Service Worker to intercept 4399 API calls and return mock data
+// Service Worker to intercept 4399 API calls
 self.addEventListener('install', event => {
     self.skipWaiting();
 });
@@ -10,23 +10,26 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
     const url = event.request.url;
     
-    // 拦截4399相关的所有请求
     if (url.includes('4399.com') || url.includes('4399pk.com')) {
         console.log('[SW] Intercepted:', url.substring(0, 100));
         
         let responseText = '';
-        let contentType = 'text/plain';
+        let contentType = 'text/html';
         
         if (url.includes('get_time')) {
-            // 返回JSON格式的时间戳（游戏期望有time属性的对象）
-            responseText = JSON.stringify({ time: Math.floor(Date.now() / 1000) });
-            contentType = 'application/json';
+            // 返回纯数字时间戳（4399原版格式）
+            responseText = Math.floor(Date.now() / 1000).toString();
+            contentType = 'text/plain';
         } else if (url.includes('flash_ctrl_version')) {
-            responseText = '<?xml version="1.0" encoding="utf-8"?><data></data>';
+            responseText = '<?xml version="1.0"?><data></data>';
             contentType = 'application/xml';
+        } else if (url.includes('ctrl_mo') || url.includes('loading2')) {
+            // 4399控制SWF - 返回空
+            responseText = '';
+            contentType = 'application/x-shockwave-flash';
         } else {
-            responseText = '{}';
-            contentType = 'application/json';
+            responseText = '';
+            contentType = 'text/plain';
         }
         
         event.respondWith(new Response(responseText, {
@@ -41,7 +44,6 @@ self.addEventListener('fetch', event => {
         return;
     }
     
-    // 其他请求正常通过
     event.respondWith(
         fetch(event.request).catch(() => new Response('', { status: 404 }))
     );
