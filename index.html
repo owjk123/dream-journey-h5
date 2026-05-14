@@ -7,66 +7,53 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: #1a0a0a;
+            background: #000;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             min-height: 100vh;
-            font-family: 'Microsoft YaHei', sans-serif;
-            color: #d4a574;
             overflow: hidden;
         }
-        .header {
-            text-align: center; padding: 8px; width: 100%;
-            background: linear-gradient(180deg, #2a1510 0%, transparent 100%);
-        }
-        .header h1 { font-size: 1.1em; color: #ffd700; text-shadow: 0 0 10px rgba(255,215,0,0.5); }
-        .header p { font-size: 0.65em; color: #8b7355; margin-top: 2px; }
         #game-container {
-            width: 800px; height: 600px; max-width: 100vw;
-            max-height: calc(100vh - 50px);
-            background: #000; border: 2px solid #8b4513;
-            border-radius: 4px; position: relative;
+            width: 800px;
+            height: 600px;
+            max-width: 100vw;
+            max-height: calc(100vh - 20px);
         }
-        .loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-            text-align: center; color: #ffd700; z-index: 10;
+        /* Ruffle player fills container */
+        #game-container ruffle-player {
+            width: 100%;
+            height: 100%;
         }
-        .loading .spinner {
-            width: 40px; height: 40px; border: 3px solid #8b4513;
-            border-top-color: #ffd700; border-radius: 50%;
-            animation: spin 1s linear infinite; margin: 0 auto 10px;
+        .controls {
+            position: fixed; bottom: 5px; right: 10px;
+            display: flex; gap: 6px; z-index: 100;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .controls { margin-top: 6px; display: flex; gap: 8px; }
         .controls button {
-            background: #2a1510; color: #d4a574; border: 1px solid #8b4513;
-            padding: 4px 12px; border-radius: 3px; cursor: pointer; font-size: 0.75em;
+            background: rgba(42,21,16,0.8); color: #d4a574; border: 1px solid #8b4513;
+            padding: 3px 10px; border-radius: 3px; cursor: pointer; font-size: 0.7em;
         }
         .controls button:hover { background: #3a2520; color: #ffd700; }
-        .note { margin-top: 6px; font-size: 0.6em; color: #665544; text-align: center; max-width: 600px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>⚔ 造梦江湖 ⚔</h1>
-        <p>Ruffle Flash模拟器 · 原版游戏在线运行</p>
-    </div>
     <div id="game-container">
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <div>正在加载游戏...</div>
-        </div>
+        <object data="game_core.swf" type="application/x-shockwave-flash" width="800" height="600">
+            <param name="movie" value="game_core.swf">
+            <param name="quality" value="high">
+            <param name="bgcolor" value="#000000">
+            <param name="allowScriptAccess" value="never">
+            <param name="allowFullScreen" value="true">
+        </object>
     </div>
     <div class="controls">
         <button onclick="toggleFullscreen()">全屏</button>
-        <button onclick="restartGame()">重新加载</button>
+        <button onclick="location.reload()">刷新</button>
     </div>
-    <div class="note">⚠ 原版为4399在线游戏，部分功能需服务器支持。如遇问题请刷新。</div>
 
+    <!-- Ruffle polyfill - 自动替换<object>标签中的Flash内容 -->
     <script>
-        // 必须在ruffle.js加载前设置配置
         window.RufflePlayer = window.RufflePlayer || {};
         window.RufflePlayer.config = {
             allowScriptAccess: false,
@@ -82,33 +69,12 @@
     </script>
     <script src="ruffle/ruffle.js"></script>
     <script>
-        window.addEventListener("DOMContentLoaded", () => {
-            const container = document.getElementById('game-container');
-            const loadingEl = document.getElementById('loading');
-            
-            try {
-                const ruffle = window.RufflePlayer.newest();
-                const player = ruffle.createPlayer();
-                player.style.width = '100%';
-                player.style.height = '100%';
-                container.appendChild(player);
-                
-                // 正确的API: player.ruffle().load()
-                player.ruffle().load("game_core.swf");
-                
-                // 隐藏loading
-                setTimeout(() => { loadingEl.style.display = 'none'; }, 3000);
-            } catch(e) {
-                console.error('Ruffle init error:', e);
-                loadingEl.innerHTML = '<div>加载失败: ' + e.message + '</div>';
-            }
-        });
-
         function toggleFullscreen() {
+            const player = document.querySelector('ruffle-player');
             if (document.fullscreenElement) document.exitFullscreen();
+            else if (player) player.requestFullscreen();
             else document.getElementById('game-container').requestFullscreen();
         }
-        function restartGame() { location.reload(); }
     </script>
 </body>
 </html>
