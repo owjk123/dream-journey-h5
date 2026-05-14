@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>造梦江湖 - 小宝传奇 (v6 debug)</title>
+    <title>造梦江湖 - 小宝传奇 (v7 trace)</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; overflow: hidden; touch-action: none; }
@@ -32,6 +32,7 @@
         }
         #debug-panel.show { display: block; }
     </style>
+    
     <script>
     window.RufflePlayer = window.RufflePlayer || {};
     window.RufflePlayer.config = {
@@ -41,11 +42,12 @@
         letterbox: "on",
         autoplay: "on",
         unmuteOverlay: "hidden",
-        logLevel: "debug",
+        logLevel: "warn",
         maxExecutionDuration: 300,
         baseUrl: location.href.substring(0, location.href.lastIndexOf('/') + 1),
     };
     </script>
+    
     <script src="ruffle/ruffle.js"></script>
 </head>
 <body>
@@ -56,24 +58,27 @@
             <div id="tip">首次加载需下载约10MB资源</div>
         </div>
     </div>
+    
     <div id="controls">
         <button onclick="fullscreen()">全屏</button>
         <button onclick="location.reload()">刷新</button>
         <button onclick="toggleDebug()">调试</button>
-        <button onclick="testCanvasClick()">Canvas点击</button>
-        <button onclick="testPlayerClick()">Player点击</button>
-        <button onclick="dumpRuffleState()">状态</button>
+        <button onclick="testInject()">注入点击</button>
+        <button onclick="testFocus()">Focus</button>
+        <button onclick="dumpState()">状态</button>
+        <button onclick="tryRightClick()">右键菜单</button>
     </div>
+    
     <div id="debug-panel"></div>
 
     <script>
-    // ========== Debug System v6 ==========
+    // ========== Debug System v7 ==========
     var debugPanel = document.getElementById('debug-panel');
     var debugLogs = [];
     var debugShown = false;
     var MAX_LOGS = 500;
     var insideLog = false;
-    var clickLogIndex = 0;
+    var avm2Traces = [];
 
     function dlog(msg) {
         if (insideLog) return;
@@ -98,13 +103,12 @@
         if (debugShown) {
             var recent = debugLogs.slice(-50);
             debugPanel.textContent = recent.join('\n');
-            debugPanel.scrollTop = debugPanel.scrollHeight;
         }
     }
 
-    // ========== 4399 JS Bridge Complete Mock ==========
-    window._4399_function_store_id = function(d) { dlog('store: ' + JSON.stringify(d)); return true; };
-    window._4399_function_payMoney_id = function(d) { dlog('pay: ' + JSON.stringify(d)); return true; };
+    // ========== 4399 API Mock ==========
+    window._4399_function_getStore_id = function(d) { dlog('store: ' + JSON.stringify(d)); return true; };
+    window._4399_function_pay_id = function(d) { dlog('pay: ' + JSON.stringify(d)); return true; };
     window._4399_function_shop_id = function(d) { dlog('shop: ' + JSON.stringify(d)); return true; };
     window._4399_function_rankList_id = function(d) { dlog('rank: ' + JSON.stringify(d)); return true; };
     window._4399_getUserInfo = function() {
@@ -146,12 +150,18 @@
                 gameArea.appendChild(rufflePlayer);
 
                 loadMsg.textContent = '加载造梦江湖...';
-                dlog('Ruffle player created, loading game_core.swf');
+                dlog('Ruffle player created');
 
-                // Monitor ALL events on player element
-                var eventsToMonitor = ['pointerdown','pointerup','pointermove','click','mousedown','mouseup','mousemove',
-                    'touchstart','touchend','touchmove','focus','blur','focusin','focusout'];
-                eventsToMonitor.forEach(function(evt) {
+                // Set up trace observer to capture AVM2 trace() output
+                rufflePlayer.traceObserver = {
+                    onTrace: function(message) {
+                        avm2Traces.push(message);
+                        dlog('[AVM2 trace] ' + message);
+                    }
+                };
+
+                // Monitor events on player element
+                ['pointerdown','pointerup','click','mousedown','mouseup','focusin','focusout'].forEach(function(evt) {
                     rufflePlayer.addEventListener(evt, function(e) {
                         dlog('PLAYER ' + evt + ' @ ' + Math.round(e.offsetX||0) + ',' + Math.round(e.offsetY||0) + 
                              ' btn=' + (e.button||'-') + ' ptr=' + (e.pointerType||'-'));
@@ -174,10 +184,14 @@
                 }).then(function() {
                     loadMsg.textContent = '游戏加载完成！';
                     dlog('SWF loaded OK');
+                    
+                    // Wait for game to fully initialize then set up canvas monitoring
                     setTimeout(function() {
                         loading.style.opacity = '0';
                         setTimeout(function() { loading.style.display = 'none'; }, 1000);
-                    }, 2000);
+                        
+                        setupCanvasMonitoring();
+                    }, 3000);
                 }).catch(function(err) {
                     loadMsg.textContent = '加载失败: ' + err.message;
                     dlog('SWF load error: ' + err.message);
@@ -189,6 +203,24 @@
             }
         }
 
+        function setupCanvasMonitoring() {
+            var canvas = rufflePlayer.shadowRoot ? rufflePlayer.shadowRoot.querySelector('canvas') : null;
+            if (!canvas) {
+                dlog('No canvas found for monitoring');
+                return;
+            }
+            
+            // Monitor events on canvas
+            ['pointerdown','pointerup','click','mousedown','mouseup'].forEach(function(evt) {
+                canvas.addEventListener(evt, function(e) {
+                    dlog('CANVAS ' + evt + ' @ ' + Math.round(e.offsetX) + ',' + Math.round(e.offsetY) + 
+                         ' btn=' + e.button + ' ptr=' + (e.pointerType||'-'));
+                }, true);
+            });
+            
+            dlog('Canvas monitoring set up: ' + canvas.width + 'x' + canvas.height);
+        }
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
@@ -196,101 +228,163 @@
         }
     })();
 
-    // ========== Canvas-level Click Test ==========
-    function testCanvasClick() {
+    // ========== Inject Click via JavaScript ==========
+    function testInject() {
         var player = rufflePlayer || document.querySelector('ruffle-player');
-        if (!player) { dlog('No player found'); return; }
-        
-        var canvas = player.shadowRoot ? player.shadowRoot.querySelector('canvas') : null;
-        if (!canvas) { dlog('No canvas found in shadow root'); return; }
+        if (!player || !player.shadowRoot) { dlog('No player/shadow'); return; }
+        var canvas = player.shadowRoot.querySelector('canvas');
+        if (!canvas) { dlog('No canvas'); return; }
         
         var rect = canvas.getBoundingClientRect();
-        var cx = rect.width / 2;
-        var cy = rect.height * 0.65;
+        // Click in the button area (left side, roughly where buttons are)
+        var cx = rect.width * 0.25;
+        var cy = rect.height * 0.5;
         
-        clickLogIndex = debugLogs.length;
-        dlog('=== CANVAS CLICK at ' + Math.round(cx) + ',' + Math.round(cy) + ' ===');
+        dlog('=== INJECT CLICK at ' + Math.round(cx) + ',' + Math.round(cy) + ' ===');
+        var beforeTraceCount = avm2Traces.length;
         
-        // Dispatch pointerdown on canvas
+        // Method 1: Dispatch PointerEvent on canvas
+        var evtDown = new PointerEvent('pointerdown', {
+            clientX: rect.left + cx, clientY: rect.top + cy,
+            offsetX: cx, offsetY: cy,
+            bubbles: true, cancelable: true, composed: true,
+            pointerId: 1, pointerType: 'mouse',
+            button: 0, buttons: 1,
+            width: 1, height: 1, pressure: 0.5, isPrimary: true, view: window
+        });
+        canvas.dispatchEvent(evtDown);
+        
+        setTimeout(function() {
+            var evtUp = new PointerEvent('pointerup', {
+                clientX: rect.left + cx, clientY: rect.top + cy,
+                offsetX: cx, offsetY: cy,
+                bubbles: true, cancelable: true, composed: true,
+                pointerId: 1, pointerType: 'mouse',
+                button: 0, buttons: 0,
+                width: 1, height: 1, pressure: 0, isPrimary: true, view: window
+            });
+            canvas.dispatchEvent(evtUp);
+        }, 100);
+        
+        setTimeout(function() {
+            var evtClick = new MouseEvent('click', {
+                clientX: rect.left + cx, clientY: rect.top + cy,
+                offsetX: cx, offsetY: cy,
+                bubbles: true, cancelable: true, composed: true,
+                button: 0, view: window
+            });
+            canvas.dispatchEvent(evtClick);
+        }, 200);
+        
+        // Method 2: Also try dispatching MouseEvent (not PointerEvent) directly
+        setTimeout(function() {
+            dlog('--- Trying raw MouseEvent ---');
+            var md = new MouseEvent('mousedown', {
+                clientX: rect.left + cx, clientY: rect.top + cy,
+                offsetX: cx, offsetY: cy,
+                bubbles: true, cancelable: true,
+                button: 0, view: window
+            });
+            canvas.dispatchEvent(md);
+            setTimeout(function() {
+                var mu = new MouseEvent('mouseup', {
+                    clientX: rect.left + cx, clientY: rect.top + cy,
+                    offsetX: cx, offsetY: cy,
+                    bubbles: true, cancelable: true,
+                    button: 0, view: window
+                });
+                canvas.dispatchEvent(mu);
+            }, 50);
+        }, 500);
+        
+        // Check results
+        setTimeout(function() {
+            var newTraces = avm2Traces.length - beforeTraceCount;
+            dlog('=== After inject: ' + newTraces + ' new AVM2 traces, total logs: ' + debugLogs.length + ' ===');
+        }, 2000);
+    }
+    
+    function testFocus() {
+        var player = rufflePlayer || document.querySelector('ruffle-player');
+        if (!player) return;
+        
+        // Try to focus the player
+        player.focus();
+        dlog('Focus called on player, tabIndex=' + player.tabIndex);
+        
+        // Check if shadow host is focusable
+        var shadowHost = player;
+        dlog('shadowHost focusable: ' + (shadowHost.tabIndex >= -1));
+        
+        // Try focusing the container
+        if (player.shadowRoot) {
+            var container = player.shadowRoot.querySelector('#container');
+            if (container) {
+                container.focus();
+                dlog('Container focused');
+            }
+            var canvas = player.shadowRoot.querySelector('canvas');
+            if (canvas) {
+                canvas.focus();
+                dlog('Canvas focus attempted');
+            }
+        }
+    }
+    
+    function tryRightClick() {
+        var player = rufflePlayer || document.querySelector('ruffle-player');
+        if (!player || !player.shadowRoot) { dlog('No player/shadow'); return; }
+        var canvas = player.shadowRoot.querySelector('canvas');
+        if (!canvas) { dlog('No canvas'); return; }
+        
+        var rect = canvas.getBoundingClientRect();
+        var cx = rect.width * 0.3;
+        var cy = rect.height * 0.5;
+        
+        dlog('=== RIGHT CLICK at ' + Math.round(cx) + ',' + Math.round(cy) + ' ===');
+        
+        // Try right-click (button=2)
         canvas.dispatchEvent(new PointerEvent('pointerdown', {
             clientX: rect.left + cx, clientY: rect.top + cy,
             offsetX: cx, offsetY: cy,
             bubbles: true, cancelable: true,
             pointerId: 1, pointerType: 'mouse',
-            button: 0, buttons: 1,
-            width: 1, height: 1,
-            pressure: 0.5, isPrimary: true
+            button: 2, buttons: 2,
+            width: 1, height: 1, pressure: 0.5, isPrimary: true, view: window
         }));
         
         setTimeout(function() {
-            canvas.dispatchEvent(new PointerEvent('pointerup', {
-                clientX: rect.left + cx, clientY: rect.top + cy,
-                offsetX: cx, offsetY: cy,
-                bubbles: true, cancelable: true,
-                pointerId: 1, pointerType: 'mouse',
-                button: 0, buttons: 0,
-                width: 1, height: 1,
-                pressure: 0, isPrimary: true
-            }));
-        }, 100);
-        
-        setTimeout(function() {
-            var newLogs = debugLogs.slice(clickLogIndex);
-            dlog('=== After canvas click: ' + (debugLogs.length - clickLogIndex) + ' new log entries ===');
-        }, 2000);
+            // Check if context menu items are available
+            try {
+                var menuItems = player.prepare_context_menu();
+                dlog('Context menu items: ' + JSON.stringify(menuItems));
+            } catch(e) {
+                dlog('Context menu error: ' + e.message);
+            }
+        }, 500);
     }
     
-    function testPlayerClick() {
-        var player = rufflePlayer || document.querySelector('ruffle-player');
-        if (!player) { dlog('No player found'); return; }
-        
-        var rect = player.getBoundingClientRect();
-        var cx = rect.width / 2;
-        var cy = rect.height * 0.65;
-        
-        clickLogIndex = debugLogs.length;
-        dlog('=== PLAYER CLICK at ' + Math.round(cx) + ',' + Math.round(cy) + ' ===');
-        
-        // Dispatch on player element
-        ['pointerdown', 'pointerup', 'click'].forEach(function(type, idx) {
-            setTimeout(function() {
-                player.dispatchEvent(new PointerEvent(type, {
-                    clientX: rect.left + cx, clientY: rect.top + cy,
-                    offsetX: cx, offsetY: cy,
-                    bubbles: true, cancelable: true,
-                    pointerId: 1, pointerType: 'mouse',
-                    button: 0, buttons: type === 'pointerdown' ? 1 : 0,
-                    width: 1, height: 1, pressure: type === 'pointerdown' ? 0.5 : 0, isPrimary: true
-                }));
-            }, idx * 50);
-        });
-        
-        setTimeout(function() {
-            dlog('=== After player click: ' + (debugLogs.length - clickLogIndex) + ' new log entries ===');
-        }, 2000);
-    }
-    
-    function dumpRuffleState() {
+    function dumpState() {
         var player = rufflePlayer || document.querySelector('ruffle-player');
         if (!player) { dlog('No player'); return; }
         
         var canvas = player.shadowRoot ? player.shadowRoot.querySelector('canvas') : null;
         dlog('Player: ' + player.offsetWidth + 'x' + player.offsetHeight);
-        dlog('Canvas: ' + (canvas ? canvas.width + 'x' + canvas.height + ' style=' + canvas.style.cssText : 'NONE'));
-        dlog('ShadowRoot: ' + !!player.shadowRoot);
-        if (player.shadowRoot) {
-            var children = [];
-            player.shadowRoot.childNodes.forEach(function(c) {
-                children.push((c.tagName || c.nodeName) + (c.id ? '#' + c.id : '') + (c.className ? '.' + c.className : ''));
-            });
-            dlog('ShadowChildren: ' + children.join(', '));
-        }
-        dlog('TabIndex: ' + player.tabIndex);
+        dlog('Canvas: ' + (canvas ? canvas.width + 'x' + canvas.height + ' touch=' + canvas.style.touchAction : 'NONE'));
         dlog('IsPlaying: ' + player.isPlaying);
-        try {
-            var info = player.debugPlayerInfo();
-            dlog('DebugInfo: ' + (info || '(empty)'));
-        } catch(e) { dlog('DebugInfo error: ' + e.message); }
+        dlog('AVM2 Traces: ' + avm2Traces.length);
+        dlog('Debug Logs: ' + debugLogs.length);
+        
+        if (player.shadowRoot) {
+            var container = player.shadowRoot.querySelector('#container');
+            dlog('Container class: ' + (container ? container.className : 'N/A'));
+        }
+        
+        // Show last few AVM2 traces
+        if (avm2Traces.length > 0) {
+            dlog('Last AVM2 traces:');
+            avm2Traces.slice(-10).forEach(function(t) { dlog('  ' + t); });
+        }
     }
 
     window.onerror = function(msg, url, line) { dlog('JS Error: ' + msg + ' @ L' + line); };
