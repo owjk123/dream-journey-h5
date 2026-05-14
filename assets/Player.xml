@@ -1,1 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?><data></data>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 玩家数据配置文件 -->
+<!-- 状态: 服务器返回404，数据不可用 -->
+<Player>
+<!-- 玩家属性: hp, mp, attack, defense, speed, level, exp -->
+</Player>
