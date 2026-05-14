@@ -23,6 +23,21 @@
         #controls { position: fixed; bottom: 8px; right: 8px; display: flex; gap: 6px; z-index: 200; }
         #controls button { background: rgba(30,15,10,0.8); color: #d4a574; border: 1px solid #8b4513;
             padding: 3px 10px; border-radius: 3px; font-size: 11px; cursor: pointer; }
+        #debug-panel {
+            position: fixed; top: 4px; left: 4px; z-index: 300;
+            background: rgba(0,0,0,0.85); color: #0f0; font-family: monospace;
+            font-size: 10px; padding: 4px 6px; border-radius: 3px;
+            max-width: 50vw; max-height: 30vh; overflow-y: auto;
+            pointer-events: none; display: none;
+        }
+        #debug-panel.show { display: block; }
+        #click-indicator {
+            position: fixed; z-index: 9999; pointer-events: none;
+            width: 20px; height: 20px; border: 2px solid #ff0;
+            border-radius: 50%; display: none;
+            animation: click-fade 0.5s ease-out forwards;
+        }
+        @keyframes click-fade { 0% { opacity:1; transform:scale(1); } 100% { opacity:0; transform:scale(2); } }
     </style>
     <script>
     window.RufflePlayer = window.RufflePlayer || {};
@@ -33,7 +48,7 @@
         letterbox: "on",
         autoplay: "on",
         unmuteOverlay: "hidden",
-        logLevel: "warn",
+        logLevel: "debug",
         maxExecutionDuration: 300,
         baseUrl: location.href.substring(0, location.href.lastIndexOf('/') + 1),
     };
@@ -51,23 +66,74 @@
     <div id="controls">
         <button onclick="fullscreen()">全屏</button>
         <button onclick="location.reload()">刷新</button>
+        <button onclick="toggleDebug()">调试</button>
     </div>
+    <div id="debug-panel"></div>
+    <div id="click-indicator"></div>
     <script>
-    // ========== 4399 JS Bridge 完整Mock ==========
-    window._4399_function_store_id = function(d) { return true; };
-    window._4399_function_payMoney_id = function(d) { return true; };
-    window._4399_function_shop_id = function(d) { return true; };
-    window._4399_function_rankList_id = function(d) { return true; };
-    window._4399_getUserInfo = function() {
-        return JSON.stringify({uid:'12345678',username:'Player',isLogin:true,vip:0});
-    };
-
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw-intercept.js').then(function() {
-            console.log('[SW] Registered');
-        }).catch(function(e) { console.log('[SW] Error:', e); });
+    // ========== Debug Panel ==========
+    var debugPanel = document.getElementById('debug-panel');
+    var debugLogs = [];
+    var debugShown = false;
+    function dlog(msg) {
+        var t = new Date().toLocaleTimeString();
+        var line = '[' + t + '] ' + msg;
+        debugLogs.push(line);
+        if (debugLogs.length > 100) debugLogs.shift();
+        if (debugShown) {
+            debugPanel.textContent = debugLogs.slice(-30).join('\n');
+            debugPanel.scrollTop = debugPanel.scrollHeight;
+        }
+        console.log('[DJ-Debug]', msg);
+    }
+    function toggleDebug() {
+        debugShown = !debugShown;
+        debugPanel.classList.toggle('show', debugShown);
+        if (debugShown) {
+            debugPanel.textContent = debugLogs.slice(-30).join('\n');
+        }
     }
 
+    // ========== Click Indicator ==========
+    document.addEventListener('click', function(e) {
+        var ci = document.getElementById('click-indicator');
+        ci.style.left = (e.clientX - 10) + 'px';
+        ci.style.top = (e.clientY - 10) + 'px';
+        ci.style.display = 'block';
+        dlog('Click @ ' + e.clientX + ',' + e.clientY + ' target=' + e.target.tagName);
+        setTimeout(function() { ci.style.display = 'none'; }, 500);
+    }, true);
+
+    // ========== 4399 JS Bridge 完整Mock (v2) ==========
+    window._4399_function_store_id = function(d) { dlog('store callback: ' + JSON.stringify(d)); return true; };
+    window._4399_function_payMoney_id = function(d) { dlog('pay callback: ' + JSON.stringify(d)); return true; };
+    window._4399_function_shop_id = function(d) { dlog('shop callback: ' + JSON.stringify(d)); return true; };
+    window._4399_function_rankList_id = function(d) { dlog('rank callback: ' + JSON.stringify(d)); return true; };
+    window._4399_getUserInfo = function() {
+        var info = {uid:'12345678',username:'Player',isLogin:true,vip:0};
+        dlog('getUserInfo called');
+        return JSON.stringify(info);
+    };
+
+    // Mock ExternalInterface callback functions that the game might call
+    window.jsSaveGame = function(data) { dlog('jsSaveGame: ' + data); localStorage.setItem('dj_save', data); return 'ok'; };
+    window.jsLoadGame = function() { dlog('jsLoadGame'); return localStorage.getItem('dj_save') || ''; };
+    window.jsSetShare = function() { dlog('jsSetShare'); return 'ok'; };
+    window.jsLogin4399 = function() { dlog('jsLogin4399'); return JSON.stringify({uid:'12345678',username:'Player',isLogin:true}); };
+    window.jsPayCallback = function() { dlog('jsPayCallback'); return 'ok'; };
+    window.jsGetServerTime = function() { return Math.floor(Date.now()/1000).toString(); };
+
+    // Catch-all for any other 4399 functions
+    window._4399_callback = function() { dlog('4399 callback called'); return true; };
+
+    // ========== Service Worker ==========
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw-intercept.js').then(function() {
+            dlog('SW Registered');
+        }).catch(function(e) { dlog('SW Error: ' + e); });
+    }
+
+    // ========== Game Init ==========
     (function() {
         var loadMsg = document.getElementById('load-msg');
         var loading = document.getElementById('loading');
@@ -80,28 +146,61 @@
                 if (!R) { loadMsg.textContent = '播放器加载失败'; return; }
 
                 var player = R.createPlayer();
+                player.id = 'ruffle-player';
                 player.style.width = '100%';
                 player.style.height = '100%';
                 gameArea.appendChild(player);
 
                 loadMsg.textContent = '加载造梦江湖...';
+                dlog('Ruffle player created, loading game_core.swf');
+
+                // 监听player上的鼠标事件
+                player.addEventListener('mousedown', function(e) {
+                    dlog('mousedown on player @ ' + e.offsetX + ',' + e.offsetY);
+                }, true);
+                player.addEventListener('touchstart', function(e) {
+                    var t = e.touches[0];
+                    dlog('touchstart on player @ ' + (t?t.clientX:'?') + ',' + (t?t.clientY:'?'));
+                }, true);
 
                 // 直接加载game_core.swf（已patch isLocal=true + serviceHold=false）
-                // 绕过4399壳SWF，跳过登录流程
                 player.load({
                     url: 'game_core.swf',
-                    allowScriptAccess: true
+                    allowScriptAccess: true,
+                    parameters: {
+                        isLocal: 'true',
+                        store_key: '3885799f65acec467d97b4923caebaae',
+                        pay_key: '10f73c09b41d9f41e761232f5f322f38',
+                        shop_key: '30ea6b51a23275df624b781c3eb43ac6',
+                        rank_key: '69f52ab6eb1061853a761ee8c26324ae',
+                        uid: '12345678',
+                        username: 'Player'
+                    }
                 }).then(function() {
                     loadMsg.textContent = '游戏加载完成！';
+                    dlog('SWF loaded successfully');
                     setTimeout(function() {
                         loading.style.opacity = '0';
                         setTimeout(function() { loading.style.display = 'none'; }, 1000);
                     }, 2000);
                 }).catch(function(err) {
                     loadMsg.textContent = '加载失败: ' + err.message;
+                    dlog('SWF load error: ' + err.message);
                 });
+
+                // 尝试在加载后检查ExternalInterface
+                setTimeout(function() {
+                    try {
+                        if (player.callExternalInterface) {
+                            dlog('player.callExternalInterface available');
+                        }
+                    } catch(e) {}
+                    dlog('Checking player internal state...');
+                }, 5000);
+
             } catch(e) {
                 loadMsg.textContent = '错误: ' + e.message;
+                dlog('Init error: ' + e.message);
             }
         }
 
@@ -111,6 +210,14 @@
             init();
         }
     })();
+
+    // ========== 全局错误捕获 ==========
+    window.onerror = function(msg, url, line, col, err) {
+        dlog('JS Error: ' + msg + ' @ ' + line);
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+        dlog('Promise rejected: ' + (e.reason ? e.reason.message || e.reason : 'unknown'));
+    });
 
     function fullscreen() {
         var p = document.querySelector('ruffle-player') || document.getElementById('game-area');
