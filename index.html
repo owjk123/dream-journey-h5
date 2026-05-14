@@ -41,7 +41,7 @@
         letterbox: "on",
         autoplay: "on",
         unmuteOverlay: "hidden",
-        logLevel: "debug",
+        logLevel: "warn",
         maxExecutionDuration: 300,
         baseUrl: location.href.substring(0, location.href.lastIndexOf('/') + 1),
     };
@@ -65,60 +65,39 @@
     <div id="debug-panel"></div>
 
     <script>
-    // ========== Debug System v4 ==========
+    // ========== Debug System v5 - NO feedback loop ==========
     var debugPanel = document.getElementById('debug-panel');
     var debugLogs = [];
     var debugShown = false;
-    var MAX_LOGS = 500;
+    var MAX_LOGS = 200;
+    var insideLog = false;
 
     function dlog(msg) {
-        var t = new Date().toLocaleTimeString();
-        var line = '[' + t + '] ' + msg;
-        debugLogs.push(line);
-        if (debugLogs.length > MAX_LOGS) debugLogs.shift();
-        if (debugShown) refreshDebugPanel();
-        console.log('[DJ]', msg);
-    }
-
-    function refreshDebugPanel() {
-        var recent = debugLogs.slice(-60);
-        debugPanel.textContent = recent.join('\n');
-        debugPanel.scrollTop = debugPanel.scrollHeight;
+        if (insideLog) return; // Prevent feedback loop
+        insideLog = true;
+        try {
+            var t = new Date().toLocaleTimeString();
+            var line = '[' + t + '] ' + msg;
+            debugLogs.push(line);
+            if (debugLogs.length > MAX_LOGS) debugLogs.shift();
+            if (debugShown) {
+                var recent = debugLogs.slice(-40);
+                debugPanel.textContent = recent.join('\n');
+                debugPanel.scrollTop = debugPanel.scrollHeight;
+            }
+        } catch(e) {}
+        insideLog = false;
     }
 
     function toggleDebug() {
         debugShown = !debugShown;
         debugPanel.classList.toggle('show', debugShown);
-        if (debugShown) refreshDebugPanel();
+        if (debugShown) {
+            var recent = debugLogs.slice(-40);
+            debugPanel.textContent = recent.join('\n');
+            debugPanel.scrollTop = debugPanel.scrollHeight;
+        }
     }
-
-    // Intercept ALL console output to capture Ruffle logs
-    var _origLog = console.log;
-    var _origError = console.error;
-    var _origWarn = console.warn;
-
-    function interceptConsole(type, orig) {
-        return function() {
-            var msg = Array.prototype.slice.call(arguments).join(' ');
-            // Only capture Ruffle/AVM2 related messages
-            if (msg.indexOf('AVM2') !== -1 || msg.indexOf('ruffle') !== -1 || 
-                msg.indexOf('Error') !== -1 || msg.indexOf('error') !== -1 ||
-                msg.indexOf('stub') !== -1 || msg.indexOf('dispatch') !== -1 ||
-                msg.indexOf('mouse') !== -1 || msg.indexOf('Mouse') !== -1 ||
-                msg.indexOf('touch') !== -1 || msg.indexOf('click') !== -1 ||
-                msg.indexOf('stage') !== -1 || msg.indexOf('Stage') !== -1 ||
-                msg.indexOf('starling') !== -1 || msg.indexOf('Starling') !== -1 ||
-                msg.indexOf('WARN') !== -1 || msg.indexOf('INFO') !== -1 ||
-                msg.indexOf('VerifyError') !== -1 || msg.indexOf('ReferenceError') !== -1 ||
-                msg.indexOf('TypeError') !== -1) {
-                dlog('[' + type + '] ' + msg.substring(0, 300));
-            }
-            orig.apply(console, arguments);
-        };
-    }
-    console.log = interceptConsole('L', _origLog);
-    console.error = interceptConsole('E', _origError);
-    console.warn = interceptConsole('W', _origWarn);
 
     // ========== 4399 JS Bridge Complete Mock ==========
     window._4399_function_store_id = function(d) { dlog('store: ' + JSON.stringify(d)); return true; };
@@ -145,7 +124,6 @@
 
     // ========== Game Init ==========
     var rufflePlayer = null;
-    var gameCanvas = null;
 
     (function() {
         var loadMsg = document.getElementById('load-msg');
@@ -165,24 +143,14 @@
                 gameArea.appendChild(rufflePlayer);
 
                 loadMsg.textContent = '加载造梦江湖...';
-                dlog('Ruffle player created');
+                dlog('Ruffle player created, loading game_core.swf');
 
-                // Find and monitor the internal canvas
-                var canvasCheckInterval = setInterval(function() {
-                    var canvas = rufflePlayer.shadowRoot ? 
-                        rufflePlayer.shadowRoot.querySelector('canvas') :
-                        rufflePlayer.querySelector('canvas');
-                    if (canvas) {
-                        gameCanvas = canvas;
-                        clearInterval(canvasCheckInterval);
-                        dlog('Canvas found: ' + canvas.width + 'x' + canvas.height);
-                        dlog('Canvas touch-action: ' + getComputedStyle(canvas).touchAction);
-                        monitorCanvasEvents(canvas);
-                    }
-                }, 200);
-
-                // Also monitor events on the player element
-                monitorPlayerEvents(rufflePlayer);
+                // Monitor pointer events on player
+                ['pointerdown','pointerup','click'].forEach(function(evt) {
+                    rufflePlayer.addEventListener(evt, function(e) {
+                        dlog(evt + ' @ ' + Math.round(e.offsetX) + ',' + Math.round(e.offsetY));
+                    }, true);
+                });
 
                 // Load the game
                 rufflePlayer.load({
@@ -215,27 +183,6 @@
             }
         }
 
-        function monitorPlayerEvents(el) {
-            // Monitor all pointer events
-            ['pointerdown','pointerup','pointermove','click','mousedown','mouseup','touchstart','touchend'].forEach(function(evt) {
-                el.addEventListener(evt, function(e) {
-                    var x = e.offsetX !== undefined ? e.offsetX : (e.touches ? e.touches[0].clientX : '?');
-                    var y = e.offsetY !== undefined ? e.offsetY : (e.touches ? e.touches[0].clientY : '?');
-                    dlog(evt + ' on player @ ' + Math.round(x) + ',' + Math.round(y));
-                }, true);
-            });
-        }
-
-        function monitorCanvasEvents(canvas) {
-            // Monitor pointer events on canvas specifically
-            ['pointerdown','pointerup','click'].forEach(function(evt) {
-                canvas.addEventListener(evt, function(e) {
-                    dlog('canvas.' + evt + ' @ ' + Math.round(e.offsetX) + ',' + Math.round(e.offsetY) + 
-                         ' size=' + canvas.width + 'x' + canvas.height);
-                }, true);
-            });
-        }
-
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', init);
         } else {
@@ -245,68 +192,30 @@
 
     // ========== Simulate Click ==========
     function testClick() {
-        if (!gameCanvas) {
-            dlog('No canvas found, trying player...');
-            var canvas = document.querySelector('ruffle-player canvas') || 
-                         (rufflePlayer && rufflePlayer.shadowRoot ? rufflePlayer.shadowRoot.querySelector('canvas') : null);
-            if (canvas) gameCanvas = canvas;
-        }
-        
-        var target = gameCanvas || rufflePlayer || document.querySelector('ruffle-player');
-        if (!target) { dlog('No target for simulated click'); return; }
+        var player = rufflePlayer || document.querySelector('ruffle-player');
+        if (!player) { dlog('No player found'); return; }
 
-        // Simulate click at center of the game area (940x600 game)
-        var rect = target.getBoundingClientRect();
+        var rect = player.getBoundingClientRect();
         var cx = rect.width / 2;
-        var cy = rect.height / 2;
+        var cy = rect.height * 0.65;
         
-        dlog('Simulating click at center: ' + Math.round(cx) + ',' + Math.round(cy));
+        dlog('Simulating click at ' + Math.round(cx) + ',' + Math.round(cy));
         
-        // Fire pointerdown -> pointerup -> click sequence
         ['pointerdown','pointerup','click'].forEach(function(type) {
-            var evt = new PointerEvent(type, {
+            player.dispatchEvent(new PointerEvent(type, {
                 clientX: rect.left + cx,
                 clientY: rect.top + cy,
-                offsetX: cx,
-                offsetY: cy,
-                bubbles: true,
-                cancelable: true,
-                pointerId: 1,
-                pointerType: 'mouse',
-                button: 0,
-                buttons: type === 'pointerdown' ? 1 : 0
-            });
-            target.dispatchEvent(evt);
-            dlog('  dispatched ' + type);
-        });
-
-        // Also try at typical button locations
-        // Title screen "start" button is usually in lower center area
-        var btnY = rect.height * 0.65;
-        dlog('Simulating click at button area: ' + Math.round(cx) + ',' + Math.round(btnY));
-        ['pointerdown','pointerup','click'].forEach(function(type) {
-            var evt = new PointerEvent(type, {
-                clientX: rect.left + cx,
-                clientY: rect.top + btnY,
-                offsetX: cx,
-                offsetY: btnY,
-                bubbles: true,
-                cancelable: true,
-                pointerId: 1,
-                pointerType: 'mouse',
-                button: 0,
-                buttons: type === 'pointerdown' ? 1 : 0
-            });
-            target.dispatchEvent(evt);
+                offsetX: cx, offsetY: cy,
+                bubbles: true, cancelable: true,
+                pointerId: 1, pointerType: 'mouse',
+                button: 0, buttons: type === 'pointerdown' ? 1 : 0
+            }));
         });
     }
 
-    // ========== Global Error Capture ==========
-    window.onerror = function(msg, url, line, col, err) {
-        dlog('JS Error: ' + msg + ' @ L' + line);
-    };
+    window.onerror = function(msg, url, line) { dlog('JS Error: ' + msg + ' @ L' + line); };
     window.addEventListener('unhandledrejection', function(e) {
-        dlog('Promise rejected: ' + (e.reason ? e.reason.message || String(e.reason) : 'unknown'));
+        dlog('Promise rejected: ' + (e.reason ? e.reason.message || String(e.reason) : '?'));
     });
 
     function fullscreen() {
