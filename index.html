@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>造梦江湖 - Ruffle版</title>
+    <title>造梦江湖 - 小宝传奇</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; overflow: hidden; }
@@ -11,15 +11,15 @@
         #game-area ruffle-player { width: 100%; height: 100%; }
         #loading {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; display: flex; flex-direction: column;
+            background: #1a0a05; display: flex; flex-direction: column;
             align-items: center; justify-content: center; z-index: 100;
-            color: #ffd700; font-family: sans-serif; transition: opacity 0.5s;
+            color: #ffd700; font-family: 'Microsoft YaHei', sans-serif; transition: opacity 0.5s;
         }
-        .spinner { width: 40px; height: 40px; border: 3px solid #333;
+        .spinner { width: 40px; height: 40px; border: 3px solid #4a2a10;
             border-top-color: #ffd700; border-radius: 50%;
             animation: spin 1s linear infinite; margin-bottom: 12px; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        #load-msg { font-size: 14px; }
+        #load-msg { font-size: 14px; color: #d4a574; }
         #controls {
             position: fixed; bottom: 8px; right: 8px;
             display: flex; gap: 6px; z-index: 200;
@@ -43,18 +43,52 @@
     </div>
 
     <script>
-    // Mock 4399 APIs - 游戏主体期望的4399接口
-    window._4399_function_store_id = function(data) { console.log('[4399] store:', data); return true; };
-    window._4399_function_payMoney_id = function(data) { console.log('[4399] pay:', data); return true; };
-    window._4399_function_shop_id = function(data) { console.log('[4399] shop:', data); return true; };
-    window._4399_function_rankList_id = function(data) { console.log('[4399] rank:', data); return true; };
+    // ========== 4399 JS Bridge 完整Mock ==========
+    // 这些是游戏SWF通过ExternalInterface.call调用的函数
+    
+    // 存档系统 - 返回空存档列表
+    window._4399_function_store_id = function(data) {
+        console.log('[4399-Mock] store callback:', data);
+        // 存档回调 - 返回true表示存档系统可用
+        return true;
+    };
+    
+    // 支付系统 - 静默忽略
+    window._4399_function_payMoney_id = function(data) {
+        console.log('[4399-Mock] pay callback:', data);
+        return true;
+    };
+    
+    // 商城系统 - 静默忽略
+    window._4399_function_shop_id = function(data) {
+        console.log('[4399-Mock] shop callback:', data);
+        return true;
+    };
+    
+    // 排行榜系统 - 静默忽略
+    window._4399_function_rankList_id = function(data) {
+        console.log('[4399-Mock] rank callback:', data);
+        return true;
+    };
+    
+    // 4399用户信息 - 模拟已登录用户
+    window._4399_getUserInfo = function() {
+        return JSON.stringify({
+            uid: '12345678',
+            username: 'Player',
+            isLogin: true,
+            vip: 0
+        });
+    };
 
     // Service Worker拦截4399网络请求
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw-intercept.js').catch(e => console.log('SW error:', e));
+        navigator.serviceWorker.register('sw-intercept.js').then(reg => {
+            console.log('[SW] Registered');
+        }).catch(e => console.log('[SW] Error:', e));
     }
 
-    // Ruffle配置
+    // ========== Ruffle配置 ==========
     window.RufflePlayer = window.RufflePlayer || {};
     window.RufflePlayer.config = {
         allowScriptAccess: true,
@@ -64,7 +98,7 @@
         autoplay: "on",
         unmuteOverlay: "hidden",
         logLevel: "warn",
-        maxExecutionDuration: 60,
+        maxExecutionDuration: 120,
         baseUrl: window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1),
     };
     </script>
@@ -83,17 +117,26 @@
                 player.style.height = '100%';
                 gameArea.appendChild(player);
 
-                loadMsg.textContent = '加载游戏主体...';
+                loadMsg.textContent = '加载造梦江湖...';
 
-                // 直接加载游戏主体SWF（跳过4399壳）
-                player.load({ url: 'game_core.swf', allowScriptAccess: true }).then(() => {
+                // 加载壳SWF（含4399控件集成），而非直接加载game_core.swf
+                // 壳SWF会加载ctrl_mo_v5.swf和game_core.swf
+                player.load({ 
+                    url: 'xbcqv147.swf', 
+                    allowScriptAccess: true 
+                }).then(() => {
                     loadMsg.textContent = '游戏已加载';
-                    setTimeout(() => { loading.style.opacity = '0'; setTimeout(() => loading.style.display = 'none', 500); }, 2000);
+                    setTimeout(() => { 
+                        loading.style.opacity = '0'; 
+                        setTimeout(() => loading.style.display = 'none', 500); 
+                    }, 3000);
                 }).catch(err => {
                     loadMsg.textContent = '加载失败: ' + err.message;
+                    console.error('[Ruffle] Load error:', err);
                 });
             } catch(e) {
                 loadMsg.textContent = '错误: ' + e.message;
+                console.error('[Ruffle] Init error:', e);
             }
         });
 
