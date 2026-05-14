@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>造梦江湖 - 小宝传奇</title>
+    <title>造梦江湖 - 小宝传奇 (v6 debug)</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #000; overflow: hidden; touch-action: none; }
@@ -41,7 +41,7 @@
         letterbox: "on",
         autoplay: "on",
         unmuteOverlay: "hidden",
-        logLevel: "warn",
+        logLevel: "debug",
         maxExecutionDuration: 300,
         baseUrl: location.href.substring(0, location.href.lastIndexOf('/') + 1),
     };
@@ -60,20 +60,23 @@
         <button onclick="fullscreen()">全屏</button>
         <button onclick="location.reload()">刷新</button>
         <button onclick="toggleDebug()">调试</button>
-        <button onclick="testClick()">模拟点击</button>
+        <button onclick="testCanvasClick()">Canvas点击</button>
+        <button onclick="testPlayerClick()">Player点击</button>
+        <button onclick="dumpRuffleState()">状态</button>
     </div>
     <div id="debug-panel"></div>
 
     <script>
-    // ========== Debug System v5 - NO feedback loop ==========
+    // ========== Debug System v6 ==========
     var debugPanel = document.getElementById('debug-panel');
     var debugLogs = [];
     var debugShown = false;
-    var MAX_LOGS = 200;
+    var MAX_LOGS = 500;
     var insideLog = false;
+    var clickLogIndex = 0;
 
     function dlog(msg) {
-        if (insideLog) return; // Prevent feedback loop
+        if (insideLog) return;
         insideLog = true;
         try {
             var t = new Date().toLocaleTimeString();
@@ -81,7 +84,7 @@
             debugLogs.push(line);
             if (debugLogs.length > MAX_LOGS) debugLogs.shift();
             if (debugShown) {
-                var recent = debugLogs.slice(-40);
+                var recent = debugLogs.slice(-50);
                 debugPanel.textContent = recent.join('\n');
                 debugPanel.scrollTop = debugPanel.scrollHeight;
             }
@@ -93,7 +96,7 @@
         debugShown = !debugShown;
         debugPanel.classList.toggle('show', debugShown);
         if (debugShown) {
-            var recent = debugLogs.slice(-40);
+            var recent = debugLogs.slice(-50);
             debugPanel.textContent = recent.join('\n');
             debugPanel.scrollTop = debugPanel.scrollHeight;
         }
@@ -145,10 +148,13 @@
                 loadMsg.textContent = '加载造梦江湖...';
                 dlog('Ruffle player created, loading game_core.swf');
 
-                // Monitor pointer events on player
-                ['pointerdown','pointerup','click'].forEach(function(evt) {
+                // Monitor ALL events on player element
+                var eventsToMonitor = ['pointerdown','pointerup','pointermove','click','mousedown','mouseup','mousemove',
+                    'touchstart','touchend','touchmove','focus','blur','focusin','focusout'];
+                eventsToMonitor.forEach(function(evt) {
                     rufflePlayer.addEventListener(evt, function(e) {
-                        dlog(evt + ' @ ' + Math.round(e.offsetX) + ',' + Math.round(e.offsetY));
+                        dlog('PLAYER ' + evt + ' @ ' + Math.round(e.offsetX||0) + ',' + Math.round(e.offsetY||0) + 
+                             ' btn=' + (e.button||'-') + ' ptr=' + (e.pointerType||'-'));
                     }, true);
                 });
 
@@ -190,27 +196,101 @@
         }
     })();
 
-    // ========== Simulate Click ==========
-    function testClick() {
+    // ========== Canvas-level Click Test ==========
+    function testCanvasClick() {
         var player = rufflePlayer || document.querySelector('ruffle-player');
         if (!player) { dlog('No player found'); return; }
-
+        
+        var canvas = player.shadowRoot ? player.shadowRoot.querySelector('canvas') : null;
+        if (!canvas) { dlog('No canvas found in shadow root'); return; }
+        
+        var rect = canvas.getBoundingClientRect();
+        var cx = rect.width / 2;
+        var cy = rect.height * 0.65;
+        
+        clickLogIndex = debugLogs.length;
+        dlog('=== CANVAS CLICK at ' + Math.round(cx) + ',' + Math.round(cy) + ' ===');
+        
+        // Dispatch pointerdown on canvas
+        canvas.dispatchEvent(new PointerEvent('pointerdown', {
+            clientX: rect.left + cx, clientY: rect.top + cy,
+            offsetX: cx, offsetY: cy,
+            bubbles: true, cancelable: true,
+            pointerId: 1, pointerType: 'mouse',
+            button: 0, buttons: 1,
+            width: 1, height: 1,
+            pressure: 0.5, isPrimary: true
+        }));
+        
+        setTimeout(function() {
+            canvas.dispatchEvent(new PointerEvent('pointerup', {
+                clientX: rect.left + cx, clientY: rect.top + cy,
+                offsetX: cx, offsetY: cy,
+                bubbles: true, cancelable: true,
+                pointerId: 1, pointerType: 'mouse',
+                button: 0, buttons: 0,
+                width: 1, height: 1,
+                pressure: 0, isPrimary: true
+            }));
+        }, 100);
+        
+        setTimeout(function() {
+            var newLogs = debugLogs.slice(clickLogIndex);
+            dlog('=== After canvas click: ' + (debugLogs.length - clickLogIndex) + ' new log entries ===');
+        }, 2000);
+    }
+    
+    function testPlayerClick() {
+        var player = rufflePlayer || document.querySelector('ruffle-player');
+        if (!player) { dlog('No player found'); return; }
+        
         var rect = player.getBoundingClientRect();
         var cx = rect.width / 2;
         var cy = rect.height * 0.65;
         
-        dlog('Simulating click at ' + Math.round(cx) + ',' + Math.round(cy));
+        clickLogIndex = debugLogs.length;
+        dlog('=== PLAYER CLICK at ' + Math.round(cx) + ',' + Math.round(cy) + ' ===');
         
-        ['pointerdown','pointerup','click'].forEach(function(type) {
-            player.dispatchEvent(new PointerEvent(type, {
-                clientX: rect.left + cx,
-                clientY: rect.top + cy,
-                offsetX: cx, offsetY: cy,
-                bubbles: true, cancelable: true,
-                pointerId: 1, pointerType: 'mouse',
-                button: 0, buttons: type === 'pointerdown' ? 1 : 0
-            }));
+        // Dispatch on player element
+        ['pointerdown', 'pointerup', 'click'].forEach(function(type, idx) {
+            setTimeout(function() {
+                player.dispatchEvent(new PointerEvent(type, {
+                    clientX: rect.left + cx, clientY: rect.top + cy,
+                    offsetX: cx, offsetY: cy,
+                    bubbles: true, cancelable: true,
+                    pointerId: 1, pointerType: 'mouse',
+                    button: 0, buttons: type === 'pointerdown' ? 1 : 0,
+                    width: 1, height: 1, pressure: type === 'pointerdown' ? 0.5 : 0, isPrimary: true
+                }));
+            }, idx * 50);
         });
+        
+        setTimeout(function() {
+            dlog('=== After player click: ' + (debugLogs.length - clickLogIndex) + ' new log entries ===');
+        }, 2000);
+    }
+    
+    function dumpRuffleState() {
+        var player = rufflePlayer || document.querySelector('ruffle-player');
+        if (!player) { dlog('No player'); return; }
+        
+        var canvas = player.shadowRoot ? player.shadowRoot.querySelector('canvas') : null;
+        dlog('Player: ' + player.offsetWidth + 'x' + player.offsetHeight);
+        dlog('Canvas: ' + (canvas ? canvas.width + 'x' + canvas.height + ' style=' + canvas.style.cssText : 'NONE'));
+        dlog('ShadowRoot: ' + !!player.shadowRoot);
+        if (player.shadowRoot) {
+            var children = [];
+            player.shadowRoot.childNodes.forEach(function(c) {
+                children.push((c.tagName || c.nodeName) + (c.id ? '#' + c.id : '') + (c.className ? '.' + c.className : ''));
+            });
+            dlog('ShadowChildren: ' + children.join(', '));
+        }
+        dlog('TabIndex: ' + player.tabIndex);
+        dlog('IsPlaying: ' + player.isPlaying);
+        try {
+            var info = player.debugPlayerInfo();
+            dlog('DebugInfo: ' + (info || '(empty)'));
+        } catch(e) { dlog('DebugInfo error: ' + e.message); }
     }
 
     window.onerror = function(msg, url, line) { dlog('JS Error: ' + msg + ' @ L' + line); };
