@@ -41,22 +41,14 @@
 </head>
 <body>
     <div id="game-area">
-        <object id="flash-game" type="application/x-shockwave-flash" data="xbcqv147.swf" width="100%" height="100%">
-            <param name="allowScriptAccess" value="always">
-            <param name="scale" value="showAll">
-            <param name="bgcolor" value="#000000">
-            <param name="wmode" value="direct">
-        </object>
-    </div>
-    <div id="loading">
-        <div class="spinner"></div>
-        <div id="load-msg">加载造梦江湖...</div>
+        <div id="loading"><div class="spinner"></div><div id="load-msg">加载造梦江湖...</div></div>
     </div>
     <div id="controls">
         <button onclick="fullscreen()">全屏</button>
         <button onclick="location.reload()">刷新</button>
     </div>
     <script>
+    // 4399 JS Bridge Mock
     window._4399_function_store_id = function(d) { return true; };
     window._4399_function_payMoney_id = function(d) { return true; };
     window._4399_function_shop_id = function(d) { return true; };
@@ -64,18 +56,71 @@
     window._4399_getUserInfo = function() {
         return JSON.stringify({uid:'12345678',username:'Player',isLogin:true,vip:0});
     };
+    // Mock 4399 ctrl object that the shell SWF normally provides
+    window.ctrl_mo = {
+        get_time: function() {
+            var n = new Date();
+            return n.getFullYear()+'-'+('0'+(n.getMonth()+1)).slice(-2)+'-'+('0'+n.getDate()).slice(-2)+' '+('0'+n.getHours()).slice(-2)+':'+('0'+n.getMinutes()).slice(-2)+':'+('0'+n.getSeconds()).slice(-2);
+        },
+        store: function(d) { return true; },
+        getUserInfo: function() { return window._4399_getUserInfo(); }
+    };
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw-intercept.js').then(() => console.log('[SW] OK')).catch(e => console.log('[SW] Err:', e));
     }
-    // Hide loading when game starts
-    setTimeout(function() {
+    (function() {
+        var loadMsg = document.getElementById('load-msg');
         var loading = document.getElementById('loading');
-        var rp = document.querySelector('ruffle-player');
-        if (rp || document.querySelector('canvas')) {
-            loading.style.opacity = '0';
-            setTimeout(function() { loading.style.display = 'none'; }, 500);
+        var gameArea = document.getElementById('game-area');
+        function init() {
+            try {
+                loadMsg.textContent = '初始化Ruffle...';
+                var R = window.RufflePlayer.newest();
+                if (!R) { loadMsg.textContent = 'Ruffle加载失败'; return; }
+                var player = R.createPlayer();
+                player.style.width = '100%';
+                player.style.height = '100%';
+                gameArea.appendChild(player);
+                loadMsg.textContent = '加载游戏核心...';
+                // 直接加载game_core.swf（已patch isLocal=true）
+                // 绕过4399壳SWF，跳过登录流程
+                player.load({
+                    url: 'game_core.swf',
+                    allowScriptAccess: true,
+                    parameters: {}
+                }).then(function() {
+                    loadMsg.textContent = '游戏已加载';
+                    setTimeout(function() {
+                        loading.style.opacity = '0';
+                        setTimeout(function() { loading.style.display = 'none'; }, 500);
+                    }, 2000);
+                }).catch(function(err) {
+                    loadMsg.textContent = '加载失败: ' + err.message;
+                    // 如果直接加载失败，尝试加载壳SWF
+                    console.log('[Game] game_core.swf failed, trying shell SWF...');
+                    player.load({
+                        url: 'xbcqv147.swf',
+                        allowScriptAccess: true
+                    }).then(function() {
+                        loadMsg.textContent = '游戏已加载(壳模式)';
+                        setTimeout(function() {
+                            loading.style.opacity = '0';
+                            setTimeout(function() { loading.style.display = 'none'; }, 500);
+                        }, 2000);
+                    }).catch(function(err2) {
+                        loadMsg.textContent = '全部加载失败: ' + err2.message;
+                    });
+                });
+            } catch(e) {
+                loadMsg.textContent = '错误: ' + e.message;
+            }
         }
-    }, 10000);
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            init();
+        }
+    })();
     function fullscreen() {
         var p = document.querySelector('ruffle-player') || document.getElementById('game-area');
         if (document.fullscreenElement) document.exitFullscreen();
