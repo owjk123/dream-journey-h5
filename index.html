@@ -6,7 +6,7 @@
     <title>造梦江湖 - 小宝传奇</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #000; overflow: hidden; }
+        body { background: #000; overflow: hidden; touch-action: none; }
         #game-area { width: 100vw; height: 100vh; position: relative; }
         #loading {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -20,24 +20,17 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         #load-msg { font-size: 14px; color: #d4a574; }
         #tip { font-size: 11px; color: #8b6914; margin-top: 8px; }
-        #controls { position: fixed; bottom: 8px; right: 8px; display: flex; gap: 6px; z-index: 200; }
+        #controls { position: fixed; bottom: 8px; right: 8px; display: flex; gap: 6px; z-index: 200; flex-wrap: wrap; }
         #controls button { background: rgba(30,15,10,0.8); color: #d4a574; border: 1px solid #8b4513;
             padding: 3px 10px; border-radius: 3px; font-size: 11px; cursor: pointer; }
         #debug-panel {
             position: fixed; top: 4px; left: 4px; z-index: 300;
-            background: rgba(0,0,0,0.85); color: #0f0; font-family: monospace;
+            background: rgba(0,0,0,0.9); color: #0f0; font-family: monospace;
             font-size: 10px; padding: 4px 6px; border-radius: 3px;
-            max-width: 50vw; max-height: 30vh; overflow-y: auto;
-            pointer-events: none; display: none;
+            max-width: 95vw; max-height: 50vh; overflow-y: auto;
+            pointer-events: auto; display: none; white-space: pre-wrap; word-break: break-all;
         }
         #debug-panel.show { display: block; }
-        #click-indicator {
-            position: fixed; z-index: 9999; pointer-events: none;
-            width: 20px; height: 20px; border: 2px solid #ff0;
-            border-radius: 50%; display: none;
-            animation: click-fade 0.5s ease-out forwards;
-        }
-        @keyframes click-fade { 0% { opacity:1; transform:scale(1); } 100% { opacity:0; transform:scale(2); } }
     </style>
     <script>
     window.RufflePlayer = window.RufflePlayer || {};
@@ -67,64 +60,81 @@
         <button onclick="fullscreen()">全屏</button>
         <button onclick="location.reload()">刷新</button>
         <button onclick="toggleDebug()">调试</button>
+        <button onclick="testClick()">模拟点击</button>
     </div>
     <div id="debug-panel"></div>
-    <div id="click-indicator"></div>
+
     <script>
-    // ========== Debug Panel ==========
+    // ========== Debug System v4 ==========
     var debugPanel = document.getElementById('debug-panel');
     var debugLogs = [];
     var debugShown = false;
+    var MAX_LOGS = 500;
+
     function dlog(msg) {
         var t = new Date().toLocaleTimeString();
         var line = '[' + t + '] ' + msg;
         debugLogs.push(line);
-        if (debugLogs.length > 100) debugLogs.shift();
-        if (debugShown) {
-            debugPanel.textContent = debugLogs.slice(-30).join('\n');
-            debugPanel.scrollTop = debugPanel.scrollHeight;
-        }
-        console.log('[DJ-Debug]', msg);
+        if (debugLogs.length > MAX_LOGS) debugLogs.shift();
+        if (debugShown) refreshDebugPanel();
+        console.log('[DJ]', msg);
     }
+
+    function refreshDebugPanel() {
+        var recent = debugLogs.slice(-60);
+        debugPanel.textContent = recent.join('\n');
+        debugPanel.scrollTop = debugPanel.scrollHeight;
+    }
+
     function toggleDebug() {
         debugShown = !debugShown;
         debugPanel.classList.toggle('show', debugShown);
-        if (debugShown) {
-            debugPanel.textContent = debugLogs.slice(-30).join('\n');
-        }
+        if (debugShown) refreshDebugPanel();
     }
 
-    // ========== Click Indicator ==========
-    document.addEventListener('click', function(e) {
-        var ci = document.getElementById('click-indicator');
-        ci.style.left = (e.clientX - 10) + 'px';
-        ci.style.top = (e.clientY - 10) + 'px';
-        ci.style.display = 'block';
-        dlog('Click @ ' + e.clientX + ',' + e.clientY + ' target=' + e.target.tagName);
-        setTimeout(function() { ci.style.display = 'none'; }, 500);
-    }, true);
+    // Intercept ALL console output to capture Ruffle logs
+    var _origLog = console.log;
+    var _origError = console.error;
+    var _origWarn = console.warn;
 
-    // ========== 4399 JS Bridge 完整Mock (v2) ==========
-    window._4399_function_store_id = function(d) { dlog('store callback: ' + JSON.stringify(d)); return true; };
-    window._4399_function_payMoney_id = function(d) { dlog('pay callback: ' + JSON.stringify(d)); return true; };
-    window._4399_function_shop_id = function(d) { dlog('shop callback: ' + JSON.stringify(d)); return true; };
-    window._4399_function_rankList_id = function(d) { dlog('rank callback: ' + JSON.stringify(d)); return true; };
+    function interceptConsole(type, orig) {
+        return function() {
+            var msg = Array.prototype.slice.call(arguments).join(' ');
+            // Only capture Ruffle/AVM2 related messages
+            if (msg.indexOf('AVM2') !== -1 || msg.indexOf('ruffle') !== -1 || 
+                msg.indexOf('Error') !== -1 || msg.indexOf('error') !== -1 ||
+                msg.indexOf('stub') !== -1 || msg.indexOf('dispatch') !== -1 ||
+                msg.indexOf('mouse') !== -1 || msg.indexOf('Mouse') !== -1 ||
+                msg.indexOf('touch') !== -1 || msg.indexOf('click') !== -1 ||
+                msg.indexOf('stage') !== -1 || msg.indexOf('Stage') !== -1 ||
+                msg.indexOf('starling') !== -1 || msg.indexOf('Starling') !== -1 ||
+                msg.indexOf('WARN') !== -1 || msg.indexOf('INFO') !== -1 ||
+                msg.indexOf('VerifyError') !== -1 || msg.indexOf('ReferenceError') !== -1 ||
+                msg.indexOf('TypeError') !== -1) {
+                dlog('[' + type + '] ' + msg.substring(0, 300));
+            }
+            orig.apply(console, arguments);
+        };
+    }
+    console.log = interceptConsole('L', _origLog);
+    console.error = interceptConsole('E', _origError);
+    console.warn = interceptConsole('W', _origWarn);
+
+    // ========== 4399 JS Bridge Complete Mock ==========
+    window._4399_function_store_id = function(d) { dlog('store: ' + JSON.stringify(d)); return true; };
+    window._4399_function_payMoney_id = function(d) { dlog('pay: ' + JSON.stringify(d)); return true; };
+    window._4399_function_shop_id = function(d) { dlog('shop: ' + JSON.stringify(d)); return true; };
+    window._4399_function_rankList_id = function(d) { dlog('rank: ' + JSON.stringify(d)); return true; };
     window._4399_getUserInfo = function() {
-        var info = {uid:'12345678',username:'Player',isLogin:true,vip:0};
-        dlog('getUserInfo called');
-        return JSON.stringify(info);
+        return JSON.stringify({uid:'12345678',username:'Player',isLogin:true,vip:0});
     };
-
-    // Mock ExternalInterface callback functions that the game might call
-    window.jsSaveGame = function(data) { dlog('jsSaveGame: ' + data); localStorage.setItem('dj_save', data); return 'ok'; };
-    window.jsLoadGame = function() { dlog('jsLoadGame'); return localStorage.getItem('dj_save') || ''; };
-    window.jsSetShare = function() { dlog('jsSetShare'); return 'ok'; };
-    window.jsLogin4399 = function() { dlog('jsLogin4399'); return JSON.stringify({uid:'12345678',username:'Player',isLogin:true}); };
-    window.jsPayCallback = function() { dlog('jsPayCallback'); return 'ok'; };
+    window.jsSaveGame = function(data) { localStorage.setItem('dj_save', data); return 'ok'; };
+    window.jsLoadGame = function() { return localStorage.getItem('dj_save') || ''; };
+    window.jsSetShare = function() { return 'ok'; };
+    window.jsLogin4399 = function() { return JSON.stringify({uid:'12345678',username:'Player',isLogin:true}); };
+    window.jsPayCallback = function() { return 'ok'; };
     window.jsGetServerTime = function() { return Math.floor(Date.now()/1000).toString(); };
-
-    // Catch-all for any other 4399 functions
-    window._4399_callback = function() { dlog('4399 callback called'); return true; };
+    window._4399_callback = function() { return true; };
 
     // ========== Service Worker ==========
     if ('serviceWorker' in navigator) {
@@ -134,6 +144,9 @@
     }
 
     // ========== Game Init ==========
+    var rufflePlayer = null;
+    var gameCanvas = null;
+
     (function() {
         var loadMsg = document.getElementById('load-msg');
         var loading = document.getElementById('loading');
@@ -145,26 +158,34 @@
                 var R = window.RufflePlayer.newest();
                 if (!R) { loadMsg.textContent = '播放器加载失败'; return; }
 
-                var player = R.createPlayer();
-                player.id = 'ruffle-player';
-                player.style.width = '100%';
-                player.style.height = '100%';
-                gameArea.appendChild(player);
+                rufflePlayer = R.createPlayer();
+                rufflePlayer.id = 'ruffle-player';
+                rufflePlayer.style.width = '100%';
+                rufflePlayer.style.height = '100%';
+                gameArea.appendChild(rufflePlayer);
 
                 loadMsg.textContent = '加载造梦江湖...';
-                dlog('Ruffle player created, loading game_core.swf');
+                dlog('Ruffle player created');
 
-                // 监听player上的鼠标事件
-                player.addEventListener('mousedown', function(e) {
-                    dlog('mousedown on player @ ' + e.offsetX + ',' + e.offsetY);
-                }, true);
-                player.addEventListener('touchstart', function(e) {
-                    var t = e.touches[0];
-                    dlog('touchstart on player @ ' + (t?t.clientX:'?') + ',' + (t?t.clientY:'?'));
-                }, true);
+                // Find and monitor the internal canvas
+                var canvasCheckInterval = setInterval(function() {
+                    var canvas = rufflePlayer.shadowRoot ? 
+                        rufflePlayer.shadowRoot.querySelector('canvas') :
+                        rufflePlayer.querySelector('canvas');
+                    if (canvas) {
+                        gameCanvas = canvas;
+                        clearInterval(canvasCheckInterval);
+                        dlog('Canvas found: ' + canvas.width + 'x' + canvas.height);
+                        dlog('Canvas touch-action: ' + getComputedStyle(canvas).touchAction);
+                        monitorCanvasEvents(canvas);
+                    }
+                }, 200);
 
-                // 直接加载game_core.swf（已patch isLocal=true + serviceHold=false）
-                player.load({
+                // Also monitor events on the player element
+                monitorPlayerEvents(rufflePlayer);
+
+                // Load the game
+                rufflePlayer.load({
                     url: 'game_core.swf',
                     allowScriptAccess: true,
                     parameters: {
@@ -178,7 +199,7 @@
                     }
                 }).then(function() {
                     loadMsg.textContent = '游戏加载完成！';
-                    dlog('SWF loaded successfully');
+                    dlog('SWF loaded OK');
                     setTimeout(function() {
                         loading.style.opacity = '0';
                         setTimeout(function() { loading.style.display = 'none'; }, 1000);
@@ -188,20 +209,31 @@
                     dlog('SWF load error: ' + err.message);
                 });
 
-                // 尝试在加载后检查ExternalInterface
-                setTimeout(function() {
-                    try {
-                        if (player.callExternalInterface) {
-                            dlog('player.callExternalInterface available');
-                        }
-                    } catch(e) {}
-                    dlog('Checking player internal state...');
-                }, 5000);
-
             } catch(e) {
                 loadMsg.textContent = '错误: ' + e.message;
                 dlog('Init error: ' + e.message);
             }
+        }
+
+        function monitorPlayerEvents(el) {
+            // Monitor all pointer events
+            ['pointerdown','pointerup','pointermove','click','mousedown','mouseup','touchstart','touchend'].forEach(function(evt) {
+                el.addEventListener(evt, function(e) {
+                    var x = e.offsetX !== undefined ? e.offsetX : (e.touches ? e.touches[0].clientX : '?');
+                    var y = e.offsetY !== undefined ? e.offsetY : (e.touches ? e.touches[0].clientY : '?');
+                    dlog(evt + ' on player @ ' + Math.round(x) + ',' + Math.round(y));
+                }, true);
+            });
+        }
+
+        function monitorCanvasEvents(canvas) {
+            // Monitor pointer events on canvas specifically
+            ['pointerdown','pointerup','click'].forEach(function(evt) {
+                canvas.addEventListener(evt, function(e) {
+                    dlog('canvas.' + evt + ' @ ' + Math.round(e.offsetX) + ',' + Math.round(e.offsetY) + 
+                         ' size=' + canvas.width + 'x' + canvas.height);
+                }, true);
+            });
         }
 
         if (document.readyState === 'loading') {
@@ -211,12 +243,70 @@
         }
     })();
 
-    // ========== 全局错误捕获 ==========
+    // ========== Simulate Click ==========
+    function testClick() {
+        if (!gameCanvas) {
+            dlog('No canvas found, trying player...');
+            var canvas = document.querySelector('ruffle-player canvas') || 
+                         (rufflePlayer && rufflePlayer.shadowRoot ? rufflePlayer.shadowRoot.querySelector('canvas') : null);
+            if (canvas) gameCanvas = canvas;
+        }
+        
+        var target = gameCanvas || rufflePlayer || document.querySelector('ruffle-player');
+        if (!target) { dlog('No target for simulated click'); return; }
+
+        // Simulate click at center of the game area (940x600 game)
+        var rect = target.getBoundingClientRect();
+        var cx = rect.width / 2;
+        var cy = rect.height / 2;
+        
+        dlog('Simulating click at center: ' + Math.round(cx) + ',' + Math.round(cy));
+        
+        // Fire pointerdown -> pointerup -> click sequence
+        ['pointerdown','pointerup','click'].forEach(function(type) {
+            var evt = new PointerEvent(type, {
+                clientX: rect.left + cx,
+                clientY: rect.top + cy,
+                offsetX: cx,
+                offsetY: cy,
+                bubbles: true,
+                cancelable: true,
+                pointerId: 1,
+                pointerType: 'mouse',
+                button: 0,
+                buttons: type === 'pointerdown' ? 1 : 0
+            });
+            target.dispatchEvent(evt);
+            dlog('  dispatched ' + type);
+        });
+
+        // Also try at typical button locations
+        // Title screen "start" button is usually in lower center area
+        var btnY = rect.height * 0.65;
+        dlog('Simulating click at button area: ' + Math.round(cx) + ',' + Math.round(btnY));
+        ['pointerdown','pointerup','click'].forEach(function(type) {
+            var evt = new PointerEvent(type, {
+                clientX: rect.left + cx,
+                clientY: rect.top + btnY,
+                offsetX: cx,
+                offsetY: btnY,
+                bubbles: true,
+                cancelable: true,
+                pointerId: 1,
+                pointerType: 'mouse',
+                button: 0,
+                buttons: type === 'pointerdown' ? 1 : 0
+            });
+            target.dispatchEvent(evt);
+        });
+    }
+
+    // ========== Global Error Capture ==========
     window.onerror = function(msg, url, line, col, err) {
-        dlog('JS Error: ' + msg + ' @ ' + line);
+        dlog('JS Error: ' + msg + ' @ L' + line);
     };
     window.addEventListener('unhandledrejection', function(e) {
-        dlog('Promise rejected: ' + (e.reason ? e.reason.message || e.reason : 'unknown'));
+        dlog('Promise rejected: ' + (e.reason ? e.reason.message || String(e.reason) : 'unknown'));
     });
 
     function fullscreen() {
